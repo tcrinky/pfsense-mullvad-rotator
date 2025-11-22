@@ -85,14 +85,15 @@ def rotate_mullvad_wireguard_key():
     block_until_applied('/api/v2/vpn/wireguard/apply')
 
 def update_reserved_static_route(server: dict):
+    keyword = f'auto: {args.tunnel}'
     upsert = {'network': f'{server['ipv4_addr_in']}/32',
               'gateway': args.gateway,
-              'descr': f'{server['hostname']} (auto)',
+              'descr': f'{server['hostname']} ({keyword})',
               'disabled': False}
 
     # create or update reserved route
     routes = pf.get('/api/v2/routing/static_routes').json()['data']
-    reserved = next((r for r in routes if '(auto)' in r['descr']), None)
+    reserved = next((r for r in routes if keyword in r['descr']), None)
     if reserved:
         upsert['id'] = reserved['id']
     pf.request(method='PATCH' if reserved else 'POST',
