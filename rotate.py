@@ -17,6 +17,7 @@ def shell(cmd: str, error=True) -> str:
         assert data['result_code'] == 0
     return data['output'].strip()
 
+# measure server ping through WAN to avoid overhead of current tunnel (if any)
 def ping(server: dict, n=1):
     cmd = shlex.join(['ping', '-S', wan_ip, '-c', str(n), '--', server['ipv4_addr_in']])
     output = shell(cmd, error=False)
@@ -91,11 +92,11 @@ def update_reserved_static_route(server: dict):
               'descr': f'{server['hostname']} ({keyword})',
               'disabled': False}
 
-    # create or update reserved route
     routes = pf.get('/api/v2/routing/static_routes').json()['data']
     reserved = next((r for r in routes if keyword in r['descr']), None)
     if reserved:
         upsert['id'] = reserved['id']
+        
     pf.request(method='PATCH' if reserved else 'POST',
                url='/api/v2/routing/static_route',
                json=upsert
@@ -114,10 +115,10 @@ def update_reserved_wireguard_peer(server: dict):
     peers = [p for p in pf.get('/api/v2/vpn/wireguard/peers').json()['data']
              if p['tun'] == args.tunnel]
     
-    # create or update reserved peer
     reserved = next((p for p in peers if '(auto)' in p['descr']), None)
     if reserved:
         upsert['id'] = reserved['id']
+        
     pf.request(method='PATCH' if reserved else 'POST',
                url='/api/v2/vpn/wireguard/peer',
                json=upsert
@@ -184,8 +185,8 @@ if __name__ == '__main__':
         print(f'--gateway and/or --tunnel are invalid', file=sys.stderr)
         sys.exit(1)
 
-    # send internet-facing requests through the WAN gateway
-    # just in case this client is behind a downed tunnel or has no WAN access
+    # send internet-facing requests directly via the pfSense host and WAN
+    # this avoids situations where the mullvad API can't be reached because the client is behind a downed tunnel
     ip = shell(shlex.join(['dig', '@1.1.1.1', 'api.mullvad.net', '-b', wan_ip, '+short', '+https'])
               ).splitlines()[0]
     curl_args = ['curl',
