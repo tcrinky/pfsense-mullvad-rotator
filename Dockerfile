@@ -1,5 +1,5 @@
 FROM python:3.14-alpine
 COPY rotate.py .
-RUN pip install --no-cache-dir configargparse httpx
+RUN pip install --no-cache-dir configargparse~=1.7 httpx~=0.28
 ENV PYTHONUNBUFFERED=1
 ENTRYPOINT ["python3", "rotate.py"]
