@@ -17,7 +17,7 @@ def shell(cmd: str, error=True) -> str:
         assert data['result_code'] == 0
     return data['output'].strip()
 
-# measure server ping through WAN to avoid overhead of current tunnel (if any)
+# measure server ping through WAN to circumvent overhead of current tunnel (if any)
 def ping(server: dict, n=1):
     cmd = shlex.join(['ping', '-S', wan_ip, '-c', str(n), '--', server['ipv4_addr_in']])
     output = shell(cmd, error=False)
@@ -59,9 +59,10 @@ def rotate_mullvad_wireguard_key():
             print('mullvad device could not be automatically determined. please set --mullvad-device', file=sys.stderr)
         sys.exit(1)
 
-    # update mullvad device pubkey, fetch new internal ip
     private_key = shell('wg genkey')
     public_key = shell(f'echo {shlex.quote(private_key)} | wg pubkey')
+
+    # update mullvad device pubkey, fetch new internal ip
     cmd = shlex.join([*curl_args,
                       '-X', 'PUT',
                       '-H', f'Authorization: Bearer {token}',
@@ -104,12 +105,15 @@ def update_reserved_static_route(server: dict):
 
     block_until_applied('/api/v2/routing/apply')
 
-def update_reserved_wireguard_peer(server: dict):            
+def update_reserved_wireguard_peer(server: dict, server2: dict = None):
     upsert = {'enabled': True,
               'tun': args.tunnel,
               'endpoint': server['ipv4_addr_in'],
-              'descr': f'{server['hostname']} (auto)',
-              'publickey': server['pubkey'],
+              'port': str(server2['multihop_port']) if server2 else '51820',
+              'descr': f'{server['hostname']}'
+                       f'{f':{server2['hostname']} ' if server2 else ' '}'
+                       '(auto)',
+              'publickey': server2['pubkey'] if server2 else server['pubkey'],
               'allowedips': [{'address': '0.0.0.0', 'mask': 0}]}
     
     peers = [p for p in pf.get('/api/v2/vpn/wireguard/peers').json()['data']
@@ -134,6 +138,16 @@ def update_reserved_wireguard_peer(server: dict):
 
     block_until_applied('/api/v2/vpn/wireguard/apply')
 
+def pick_server():
+    if not servers:
+        print('no matching servers. try broadening your filter', file=sys.stderr)
+        sys.exit(1)
+    # ensure odds are equal between countries regardless of number of servers
+    country = secrets.choice(list({s['country_code'] for s in servers}))
+    server = secrets.choice([s for s in servers if s['country_code'] == country])
+    servers.remove(server)
+    return server
+
 if __name__ == '__main__':
     arg_parser = ArgumentParser()
     arg_parser.add_argument('--url',
@@ -145,8 +159,8 @@ if __name__ == '__main__':
                             help='pfSense REST API key')
     arg_parser.add_argument('--filter',
                             type=lambda code: eval(f'lambda server: {code}'),
-                            help='Lambda function for filtering candidate servers (dicts). ' \
-                                 'Fields are the same as in https://api.mullvad.net/www/relays/wireguard. ' \
+                            help='Lambda function for filtering candidate servers (dicts). '
+                                 'Fields are the same as in https://api.mullvad.net/www/relays/wireguard. '
                                  'Passing the server object to the ping() function will return its latency (measured through --gateway) in milliseconds. '
                                  'E.g.: --filter "server[\'owned\'] and ping(server) < 100"')
     arg_parser.add_argument('--gateway',
@@ -158,6 +172,11 @@ if __name__ == '__main__':
     arg_parser.add_argument('--mullvad-account',
                             env_var='MULLVAD_ACCOUNT',
                             help='Mullvad account number. Enables WireGuard key rotation')
+    arg_parser.add_argument('--multihop',
+                            action='store_true',
+                            help='Pick a second server to be used as exit node. '
+                                 'Traffic between servers may still be correlated by an adversary: https://www.reddit.com/r/mullvadvpn/comments/1hujzcr. '
+                                 'As an alternative, you can set up a second WireGuard tunnel and use --gateway to route another tunnel through it')
     arg_parser.add_argument('--no-verify',
                             action='store_true',
                             help='Disable certificate checking for pfSense')
@@ -186,7 +205,7 @@ if __name__ == '__main__':
         sys.exit(1)
 
     # send internet-facing requests directly via the pfSense host and WAN
-    # this avoids situations where the mullvad API can't be reached because the client is behind a downed tunnel
+    # this circumvents scenarios where the mullvad API can't be reached because the client is behind a downed tunnel
     ip = shell(shlex.join(['dig', '@1.1.1.1', 'api.mullvad.net', '-b', wan_ip, '+short', '+https'])
               ).splitlines()[0]
     curl_args = ['curl',
@@ -210,17 +229,16 @@ if __name__ == '__main__':
                 if not ok:
                     servers.remove(server)
 
-    if not servers:
-        print('no matching servers. try broadening your filter', file=sys.stderr)
-        sys.exit(1)
-
-    # ensure the odds of countries are equal regardless of number of servers
-    country = secrets.choice(list({s['country_code'] for s in servers}))
-    server = secrets.choice([s for s in servers if s['country_code'] == country])
+    server = pick_server()
     print(f'picked server: {server['hostname']}')
+
+    # pick second server to be used as exit node
+    server2 = pick_server() if args.multihop else None
+    if server2:
+        print(f'picked server #2: {server2['hostname']}')
 
     print('configuring static route ..')
     update_reserved_static_route(server)
 
     print('configuring wireguard peer ..')
-    update_reserved_wireguard_peer(server)  
+    update_reserved_wireguard_peer(server, server2)  
