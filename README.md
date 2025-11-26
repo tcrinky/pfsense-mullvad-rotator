@@ -28,4 +28,4 @@ options:
 1. Install [pfSense REST API](https://pfrest.org/INSTALL_AND_CONFIG/) and create an API key under System/REST API/Keys
 1. Set up a WireGuard tunnel using the guide at https://mullvad.net/en/help/pfsense-with-wireguard
 1. Find the device corresponding to your public key at https://mullvad.net/en/account/devices
-1. Create a cronjob: `0 0 * * * API_KEY="your_pfsense_api_key" MULLVAD_ACCOUNT="your_mullvad_account_number" docker run --rm -t -e API_KEY -e MULLVAD_ACCOUNT tcrinky/pfsense-mullvad-rotator --url "https://your_pfsense_host" --no-verify --mullvad-device "your_mullvad_device_name" --filter "ping(server) < 100"`
+1. Create a cronjob: `0 0 * * * API_KEY="your_pfsense_api_key" MULLVAD_ACCOUNT="your_mullvad_account_number" docker run --rm -e API_KEY -e MULLVAD_ACCOUNT tcrinky/pfsense-mullvad-rotator --no-verify --url "https://your_pfsense_host" --mullvad-device "your_mullvad_device_name" --filter "ping(server) < 100"`
