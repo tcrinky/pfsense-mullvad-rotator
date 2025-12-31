@@ -48,15 +48,9 @@ def rotate_mullvad_wireguard_key():
                       '-H', f'Authorization: Bearer {token}',
                       'https://api.mullvad.net/accounts/v1/devices'])
     devices = json.loads(shell(cmd))
-    try:
-        device = next(d for d in devices
-                      if d['name'] == args.mullvad_device
-                      or d['pubkey'] == wg_tunnel['publickey'])
-    except StopIteration:
-        if args.mullvad_device:
-            print('--mullvad-device is invalid', file=sys.stderr)
-        else:
-            print('mullvad device could not be automatically determined. please set --mullvad-device', file=sys.stderr)
+    device = next((d for d in devices if d['name'] == args.mullvad_device), None)
+    if not device:
+        print('--mullvad-device is invalid', file=sys.stderr)
         sys.exit(1)
 
     private_key = shell('wg genkey')
@@ -109,9 +103,9 @@ def update_reserved_wireguard_peer(server: dict, server2: dict = None):
     upsert = {'enabled': True,
               'tun': args.tunnel,
               'endpoint': server['ipv4_addr_in'],
-              'port': str(server2['multihop_port']) if server2 else '51820',
+              'port': str(server2['multihop_port'] if server2 else args.port),
               'descr': f'{server['hostname']}'
-                       f'{f':{server2['hostname']} ' if server2 else ' '}'
+                       f'{':'+server2['hostname'] if server2 else ''} '
                        '(auto)',
               'publickey': server2['pubkey'] if server2 else server['pubkey'],
               'allowedips': [{'address': '0.0.0.0', 'mask': 0}]}
@@ -160,12 +154,12 @@ if __name__ == '__main__':
     arg_parser.add_argument('--filter',
                             type=lambda code: eval(f'lambda server: {code}'),
                             help='Lambda function for filtering candidate servers (dicts). '
-                                 'Fields are the same as in https://api.mullvad.net/www/relays/wireguard. '
-                                 'Passing the server object to the ping() function will return its latency (measured through --gateway) in milliseconds. '
+                                 'Follows format of https://api.mullvad.net/www/relays/wireguard. '
+                                 'Passing the server object to the ping() function will return its latency in milliseconds (measured through --gateway). '
                                  'E.g.: --filter "server[\'owned\'] and ping(server) < 100"')
     arg_parser.add_argument('--gateway',
                             default='WAN_DHCP',
-                            help='WAN gateway name. Used for creating static routes, measuring server pings and sending Mullvad API requests')
+                            help='Upstream gateway name. Used for static routes, ping packets and Mullvad API requests')
     arg_parser.add_argument('--mullvad-device',
                             type=str.lower,
                             help='Mullvad device name. Used for WireGuard key rotation')
@@ -175,15 +169,24 @@ if __name__ == '__main__':
     arg_parser.add_argument('--multihop',
                             action='store_true',
                             help='Pick a second server to be used as exit node. '
-                                 'Traffic between servers may still be correlated by an adversary: https://www.reddit.com/r/mullvadvpn/comments/1hujzcr. '
+                                 'Be advised: Traffic between servers may still be correlated by an adversary: https://www.reddit.com/r/mullvadvpn/comments/1hujzcr. '
                                  'As an alternative, you can set up a second WireGuard tunnel and use --gateway to route another tunnel through it')
     arg_parser.add_argument('--no-verify',
                             action='store_true',
                             help='Disable certificate checking for pfSense')
+    arg_parser.add_argument('--port',
+                            type=int,
+                            default=51820,
+                            help='WireGuard peer port. Not compatible with --multihop. '
+                                 'Valid ranges: 53, 123, 4000-33433, 33565-51820, 52001-60000')
     arg_parser.add_argument('--tunnel',
                             default='tun_wg0',
                             help='WireGuard tunnel name')
     args = arg_parser.parse_args()
+
+    if args.mullvad_account and not args.mullvad_device:
+        print('--mullvad-device is required when key rotation is enabled', file=sys.stderr)
+        sys.exit(1)
 
     pf = httpx.Client(base_url=args.url,
                       headers={'x-api-key': args.api_key},
@@ -206,8 +209,8 @@ if __name__ == '__main__':
 
     # send internet-facing requests directly via the pfSense host and WAN
     # this circumvents scenarios where the mullvad API can't be reached because the client is behind a downed tunnel
-    ip = shell(shlex.join(['dig', '@1.1.1.1', 'api.mullvad.net', '-b', wan_ip, '+short', '+https'])
-              ).splitlines()[0]
+    ip = shell(shlex.join(['dig', '@194.242.2.2', 'api.mullvad.net',
+                           '+short', '+https', '+tls-hostname=dns.mullvad.net', '-b', wan_ip]) + ' | head -n 1')
     curl_args = ['curl',
                  '--silent',
                  '--fail',
