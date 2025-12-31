@@ -2,25 +2,30 @@
 Tool for randomly rotating Mullvad WireGuard servers within pfSense, with support for key rotation.
 
 ```
-usage: rotate.py [-h] --url URL --api-key API_KEY [--filter FILTER] [--gateway GATEWAY] [--mullvad-device MULLVAD_DEVICE]
-                 [--mullvad-account MULLVAD_ACCOUNT] [--multihop] [--no-verify] [--tunnel TUNNEL]
+usage: rotate.py [-h] --url URL --api-key API_KEY [--filter FILTER] [--gateway GATEWAY]
+                 [--mullvad-device MULLVAD_DEVICE] [--mullvad-account MULLVAD_ACCOUNT] [--multihop]
+                 [--no-verify] [--port PORT] [--tunnel TUNNEL]
 
 options:
   -h, --help            show this help message and exit
   --url URL             pfSense base URL
   --api-key API_KEY     pfSense REST API key [env var: API_KEY]
-  --filter FILTER       Lambda function for filtering candidate servers (dicts). Fields are the same as in
-                        https://api.mullvad.net/www/relays/wireguard. Passing the server object to the ping() function will return its latency   
-                        (measured through --gateway) in milliseconds. E.g.: --filter "server['owned'] and ping(server) < 100"
-  --gateway GATEWAY     WAN gateway name. Used for creating static routes, measuring server pings and sending Mullvad API requests
+  --filter FILTER       Lambda function for filtering candidate servers (dicts). Follows format of
+                        https://api.mullvad.net/www/relays/wireguard. Passing the server object to the ping()   
+                        function will return its latency in milliseconds (measured through --gateway). E.g.:    
+                        --filter "server['owned'] and ping(server) < 100"
+  --gateway GATEWAY     Upstream gateway name. Used for static routes, ping packets and Mullvad API requests    
   --mullvad-device MULLVAD_DEVICE
                         Mullvad device name. Used for WireGuard key rotation
   --mullvad-account MULLVAD_ACCOUNT
-                        Mullvad account number. Enables WireGuard key rotation [env var: MULLVAD_ACCOUNT]
-  --multihop            Pick a second server to be used as exit node. Traffic between servers may still be correlated by an adversary:
-                        https://www.reddit.com/r/mullvadvpn/comments/1hujzcr. As an alternative, you can set up a second WireGuard tunnel and    
-                        use --gateway to route another tunnel through it
+                        Mullvad account number. Enables WireGuard key rotation [env var: MULLVAD_ACCOUNT]       
+  --multihop            Pick a second server to be used as exit node. Be advised: Traffic between servers may   
+                        still be correlated by an adversary:
+                        https://www.reddit.com/r/mullvadvpn/comments/1hujzcr. As an alternative, you can set    
+                        up a second WireGuard tunnel and use --gateway to route another tunnel through it       
   --no-verify           Disable certificate checking for pfSense
+  --port PORT           WireGuard peer port. Not compatible with --multihop. Valid ranges: 53, 123,
+                        4000-33433, 33565-51820, 52001-60000
   --tunnel TUNNEL       WireGuard tunnel name
 ```
 
