@@ -1,6 +1,8 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime, timezone
 from time import time, sleep
 import json
+import os.path
 import re
 import secrets
 import shlex
@@ -245,3 +247,18 @@ if __name__ == '__main__':
 
     print('configuring wireguard peer ..')
     update_reserved_wireguard_peer(server, server2)  
+
+    if os.path.exists('/log'):
+        date = datetime.now(timezone.utc).isoformat()
+        cmd = ['curl',
+               '--silent',
+               '--fail',
+               '--interface', wg_interface['if'],
+               'https://ipv4.am.i.mullvad.net/json']
+        external_ip = json.loads(shell(shlex.join(cmd)))['ip']
+        with open('/log', 'a') as file:
+            file.write(f'[{date}] '
+                       f'tunnel={args.tunnel}, '
+                       f'server={server['hostname']}, '
+                       f'server#2={server2 and server2['hostname']}, '
+                       f'ip={external_ip}\n')
