@@ -37,3 +37,5 @@ options:
    ```bash
    0 0 * * * API_KEY="your_pfsense_api_key" MULLVAD_ACCOUNT="your_mullvad_account_number" docker run --rm -e API_KEY -e MULLVAD_ACCOUNT tcrinky/pfsense-mullvad-rotator --no-verify --url "https://your_pfsense_host" --mullvad-device "your_mullvad_device_name" --filter "ping(server) < 100"
    ```
+
+Mount `/log` to log tunnel details into a file.
