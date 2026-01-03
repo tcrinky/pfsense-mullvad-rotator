@@ -1,5 +1,5 @@
 ## pfsense-mullvad-rotator
-Tool for randomly rotating Mullvad WireGuard servers within pfSense, with support for key rotation.
+Tool for randomizing Mullvad servers in pfSense, with support for key rotation.
 
 ```
 usage: rotate.py [-h] --url URL --api-key API_KEY [--filter FILTER] [--gateway GATEWAY]
